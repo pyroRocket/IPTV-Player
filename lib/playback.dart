@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -108,6 +110,14 @@ Future<void> _configure(Player player, PlaybackSettings s, bool preview) async {
       'deband': 'no',
     },
     if (preview) 'volume': '60',
+    // Keep recently played video so live TV can be rewound within the buffer.
+    if (!preview) ...{
+      'force-seekable': 'yes',
+      // Land exactly where asked (10 s back), not on the nearest keyframe.
+      'hr-seek': 'yes',
+      'demuxer-seekable-cache': 'yes',
+      'demuxer-max-back-bytes': Platform.isAndroid ? '48MiB' : '160MiB',
+    },
   };
   for (final e in props.entries) {
     try {
