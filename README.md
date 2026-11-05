@@ -28,7 +28,7 @@ Every push builds the apps on GitHub Actions (see the **Actions** tab, open a ru
 | Platform | File | Notes |
 |---|---|---|
 | Fire TV / Android | `IPTV-Player-android.apk` | Sideload with the *Downloader* app, or `adb install` |
-| Windows | `IPTV-Player-windows-setup.exe` | Installer with Start menu entry and uninstaller. Unsigned for now: on the SmartScreen warning choose **More info → Run anyway** |
+| Windows | `IPTV-Player-windows-setup.exe` | Installer with Start menu entry and uninstaller. Until signing is set up, on the SmartScreen warning choose **More info → Run anyway** |
 | Windows (portable) | `IPTV-Player-windows.zip` | Unzip and run `iptv_player.exe` |
 | macOS | `IPTV-Player-macos.zip` | Unsigned for now: right-click the app and choose **Open** the first time |
 
@@ -148,6 +148,25 @@ lib/
 test/                    parser tests
 windows/installer/       Inno Setup script for the Windows installer
 ```
+
+## Code signing policy
+
+Windows release builds are signed via SignPath once the project is accepted into its open-source
+program (setup steps: [docs/SIGNING.md](docs/SIGNING.md)).
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+- **Committers and reviewers:** [pyroRocket](https://github.com/pyroRocket)
+- **Approvers:** [pyroRocket](https://github.com/pyroRocket)
+
+Only builds made by this repository's GitHub Actions workflow from its own source are signed,
+and every signing request is approved by hand.
+
+**Privacy:** this program will not transfer any information to other networked systems unless
+specifically requested by the user or the person installing or operating it. It connects only
+to the IPTV provider and guide addresses you enter, and, if you open Sports Zone, to ESPN's
+public scores feed.
 
 ## Before publishing to an app store
 

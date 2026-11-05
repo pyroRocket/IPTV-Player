@@ -49,6 +49,10 @@ jobs:
   windows:
     needs: test
     runs-on: windows-latest
+    env:
+      # Releases (v* tags) are signed through SignPath once the token is set up.
+      # See docs/SIGNING.md. Without it, builds are left unsigned.
+      SIGN: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.SIGNPATH_API_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -64,6 +68,29 @@ jobs:
           foreach ($dll in 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
             Copy-Item "$env:WINDIR\System32\$dll" build/windows/x64/runner/Release/
           }
+
+      # Sign iptv_player.exe before it goes into the zip and the installer.
+      - name: Upload app for signing
+        if: env.SIGN == 'true'
+        id: unsigned-app
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-app
+          path: build/windows/x64/runner/Release/
+      - name: Sign app (approve in SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'iptv-player' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: app
+          github-artifact-id: ${{ steps.unsigned-app.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: build/windows/x64/runner/Release
+
       - name: Zip
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath IPTV-Player-windows.zip
@@ -79,7 +106,34 @@ jobs:
             $env:Path += ';C:\Program Files (x86)\Inno Setup 6'
           }
           iscc /DAppVersion=$version windows/installer/installer.iss
-          Move-Item dist/IPTV-Player-windows-setup.exe .
+          New-Item -ItemType Directory -Force installer | Out-Null
+          Move-Item dist/IPTV-Player-windows-setup.exe installer/
+
+      # Then sign the installer itself.
+      - name: Upload installer for signing
+        if: env.SIGN == 'true'
+        id: unsigned-installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installer
+          path: installer/
+      - name: Sign installer (approve in SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'iptv-player' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.unsigned-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: installer
+
+      - name: Collect files
+        shell: pwsh
+        run: Move-Item installer/IPTV-Player-windows-setup.exe .
       - uses: actions/upload-artifact@v4
         with:
           name: IPTV-Player-windows
