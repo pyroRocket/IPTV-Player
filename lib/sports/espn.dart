@@ -101,15 +101,38 @@ class SportEvent {
       competitors.any((c) => c.teamId != null && teamKeys.contains('${league.sportKey}:${c.teamId}'));
 }
 
-String _ymd(DateTime d) =>
-    '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
+String _ym(DateTime d) => '${d.year}${d.month.toString().padLeft(2, '0')}';
 
-/// Events for [league] between [from] and [to] (inclusive dates).
+/// Months (YYYYMM) touched by [from]..[to].
+List<String> monthsBetween(DateTime from, DateTime to) {
+  final out = <String>[];
+  for (var m = DateTime(from.year, from.month); !m.isAfter(to); m = DateTime(m.year, m.month + 1)) {
+    out.add(_ym(m));
+  }
+  return out;
+}
+
+/// Events for [league] between [from] and [to].
+///
+/// ESPN's scoreboard rejects date ranges (HTTP 400) but accepts a whole
+/// month, so fetch each month in the window and keep the days we need.
 Future<List<SportEvent>> fetchEvents(League league, DateTime from, DateTime to) async {
-  final url =
-      '$espnBase/apis/site/v2/sports/${league.path}/scoreboard?dates=${_ymd(from)}-${_ymd(to)}&limit=300';
-  final text = await fetchText(url, timeout: const Duration(seconds: 20));
-  return Isolate.run(() => parseScoreboard(league, text));
+  final pages = await Future.wait([
+    for (final month in monthsBetween(from, to))
+      fetchText(
+        '$espnBase/apis/site/v2/sports/${league.path}/scoreboard?dates=$month&limit=1000',
+        timeout: const Duration(seconds: 25),
+      ),
+  ]);
+  return Isolate.run(() {
+    final byId = <String, SportEvent>{};
+    for (final text in pages) {
+      for (final e in parseScoreboard(league, text)) {
+        if (!e.start.isBefore(from) && !e.start.isAfter(to)) byId[e.id] = e;
+      }
+    }
+    return byId.values.toList();
+  });
 }
 
 /// All teams in [league], for the team picker.
