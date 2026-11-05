@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models.dart';
 import 'playback.dart';
+import 'sports/espn.dart';
 
 /// Saved logins, favorites and last-watched channel, stored on this device only.
 class Storage {
@@ -58,4 +59,38 @@ class Storage {
   /// Whether the guide shows its preview pane.
   bool get guidePreview => _prefs.getBool('guidePreview') ?? true;
   Future<void> setGuidePreview(bool v) => _prefs.setBool('guidePreview', v);
+
+  // ---- Sports Zone ----
+  /// Chosen sports, e.g. ["Soccer", "Basketball"]. All their competitions
+  /// are included unless narrowed in [sportsLeagueFilter].
+  List<String> get sportsSelected => _prefs.getStringList('sports.sports') ?? const ['Soccer'];
+  Future<void> setSportsSelected(List<String> sports) => _prefs.setStringList('sports.sports', sports);
+
+  /// Optional per-sport list of competition paths. Missing sport = all competitions.
+  Map<String, List<String>> get sportsLeagueFilter {
+    try {
+      final m = jsonDecode(_prefs.getString('sports.leagueFilter') ?? '{}') as Map;
+      return {for (final e in m.entries) '${e.key}': List<String>.from(e.value as List)};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> setSportsLeagueFilter(Map<String, List<String>> f) =>
+      _prefs.setString('sports.leagueFilter', jsonEncode(f));
+
+  List<Team> get sportsTeams {
+    try {
+      final list = jsonDecode(_prefs.getString('sports.teams') ?? '[]') as List;
+      return list.map((e) => Team.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> setSportsTeams(List<Team> teams) =>
+      _prefs.setString('sports.teams', jsonEncode(teams.map((t) => t.toJson()).toList()));
+
+  bool get sportsTeamsOnly => _prefs.getBool('sports.teamsOnly') ?? false;
+  Future<void> setSportsTeamsOnly(bool v) => _prefs.setBool('sports.teamsOnly', v);
 }

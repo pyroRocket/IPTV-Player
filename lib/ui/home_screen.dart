@@ -14,6 +14,7 @@ import 'guide_view.dart';
 import 'login_screen.dart';
 import 'player_screen.dart';
 import 'series_screen.dart';
+import 'sports_zone.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -52,6 +53,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _guide = false;
   late bool _showPreview = widget.storage.guidePreview;
   Timer? _tick;
+  bool _sportsPanel = false;
+  double _width = 0;
 
   // Cache of the filtered list so rebuilds stay cheap on big catalogs.
   List<MediaItem>? _visible;
@@ -243,6 +246,32 @@ class _HomeScreenState extends State<HomeScreen> {
     await widget.storage.setPlayback(saved);
   }
 
+  List<MediaItem> get _liveChannels => _catalogs[Section.live]?.items ?? const [];
+
+  SportsZone _sportsZone({VoidCallback? onClose}) => SportsZone(
+    storage: widget.storage,
+    channels: _liveChannels,
+    epg: _epg,
+    onPlay: (ch, list) => _open(ch, list),
+    onClose: onClose,
+  );
+
+  /// Side panel on wide screens, full page otherwise (phones, smaller TVs).
+  void _openSports() {
+    _load(Section.live);
+    if (_width >= 1100) {
+      setState(() => _sportsPanel = !_sportsPanel);
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => Scaffold(
+          body: SafeArea(child: _sportsZone(onClose: () => Navigator.pop(ctx))),
+        ),
+      ),
+    );
+  }
+
   void _togglePreview() {
     setState(() => _showPreview = !_showPreview);
     widget.storage.setGuidePreview(_showPreview);
@@ -382,6 +411,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: LayoutBuilder(
             builder: (context, box) {
               final wide = box.maxWidth >= 720;
+              _width = box.maxWidth;
               return Column(
                 children: [
                   _topBar(wide),
@@ -449,6 +479,13 @@ class _HomeScreenState extends State<HomeScreen> {
               )
             else
               IconButton(tooltip: 'Search', onPressed: _openSearchDialog, icon: const Icon(Icons.search)),
+            IconButton(
+              tooltip: 'Sports Zone',
+              isSelected: _sportsPanel,
+              onPressed: _openSports,
+              icon: const Icon(Icons.emoji_events_outlined),
+              selectedIcon: const Icon(Icons.emoji_events, color: accent),
+            ),
             if (_section == Section.live)
               IconButton(
                 tooltip: _guide ? 'Channel list' : 'TV guide',
@@ -539,6 +576,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const VerticalDivider(width: 1, color: line),
         Expanded(child: FocusTraversalGroup(child: _list())),
+        if (_sportsPanel && _width >= 1100) ...[
+          const VerticalDivider(width: 1, color: line),
+          SizedBox(width: 420, child: _sportsZone(onClose: () => setState(() => _sportsPanel = false))),
+        ],
       ],
     );
   }
