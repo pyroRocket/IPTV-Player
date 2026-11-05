@@ -83,6 +83,9 @@ class XtreamSource extends IptvSource {
   List<Section> get sections => Section.values;
 
   @override
+  List<String> get epgUrls => ['$_base/xmltv.php?username=$_u&password=$_p'];
+
+  @override
   Future<Catalog> load(Section section) async {
     final cached = _cache[section];
     if (cached != null) return cached;
@@ -120,6 +123,7 @@ class XtreamSource extends IptvSource {
           logo: _str(s['stream_icon']),
           categoryId: cat,
           number: int.tryParse('${s['num']}'),
+          epgId: _str(s['epg_channel_id']),
           sources: [for (final f in _liveFormats) '$_base/live/$_u/$_p/$id.$f'],
         );
       case Section.movies:

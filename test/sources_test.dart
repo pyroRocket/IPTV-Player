@@ -21,7 +21,11 @@ http://host:8080/series/user/pass/777.mp4
 ''';
 
     test('sorts into sections with categories and titles', () {
-      final c = parseM3u(sample);
+      final pl = parseM3u(sample);
+      final c = pl.catalogs;
+      expect(pl.epgUrls, ['http://epg.example/xmltv.php']);
+      expect(c[Section.live]!.items.first.epgId, 'bbc1');
+      expect(c[Section.live]!.items.first.epgName, 'BBC One');
       final live = c[Section.live]!;
       expect(live.items.map((i) => i.name), ['BBC One HD', 'Sky Sports, Main Event', 'No Group Channel']);
       expect(live.categories.map((x) => x.name), ['UK | News, Ent', 'Sports', 'Uncategorized']);
@@ -35,7 +39,7 @@ http://host:8080/series/user/pass/777.mp4
     });
 
     test('handles CRLF and missing header', () {
-      final c = parseM3u('#EXTINF:-1,A\r\nhttp://a/1\r\n#EXTINF:-1,B\r\nhttp://a/2\r\n');
+      final c = parseM3u('#EXTINF:-1,A\r\nhttp://a/1\r\n#EXTINF:-1,B\r\nhttp://a/2\r\n').catalogs;
       expect(c[Section.live]!.items.map((i) => i.name), ['A', 'B']);
       expect(c[Section.live]!.items.first.sources.single, 'http://a/1');
     });

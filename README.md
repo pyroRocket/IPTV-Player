@@ -7,6 +7,9 @@ No subscriptions, no ads, no bundled channels. Sign in with your provider's deta
 - **M3U / M3U Plus** playlist links, with channel groups as categories. Pasting an Xtream
   `get.php?username=…&password=…` link automatically uses the faster Xtream API when available.
 - Categories, search across a whole section, favorites, saved accounts with auto sign-in
+- **TV guide (EPG):** uses your provider's guide automatically (Xtream `xmltv.php` or the M3U's
+  `x-tvg-url`), or any XMLTV address you set. Shows what's on now in the channel list and player,
+  plus a full guide grid with a live preview pane and refresh
 - Plays nearly any stream format (MPEG-TS, HLS, MKV, MP4; H.264/HEVC; AAC/AC3/E-AC3) using
   [mpv](https://mpv.io) through [media_kit](https://github.com/media-kit/media-kit)
 - Tries the next stream format automatically if one fails, and reconnects dropped live streams
@@ -22,7 +25,8 @@ Every push builds the apps on GitHub Actions (see the **Actions** tab, open a ru
 | Platform | File | Notes |
 |---|---|---|
 | Fire TV / Android | `IPTV-Player-android.apk` | Sideload with the *Downloader* app, or `adb install` |
-| Windows | `IPTV-Player-windows.zip` | Unzip and run `iptv_player.exe` |
+| Windows | `IPTV-Player-windows-setup.exe` | Installer with Start menu entry and uninstaller. Unsigned for now: on the SmartScreen warning choose **More info → Run anyway** |
+| Windows (portable) | `IPTV-Player-windows.zip` | Unzip and run `iptv_player.exe` |
 | macOS | `IPTV-Player-macos.zip` | Unsigned for now: right-click the app and choose **Open** the first time |
 
 ### Installing on Fire TV
@@ -43,10 +47,36 @@ Requires a Fire TV running Fire OS (Android-based). The newest Vega OS models ca
 | Seek -10 s / +10 s (movies, episodes) | Left / Right, Rewind / Fast-forward | Left / Right |
 | Play / pause (shows info on live TV) | OK, Play/Pause | Enter, Space |
 | Add / remove favorite | Menu | S |
+| Playback stats | Info | I |
 | Fullscreen | | F, or double-click |
 | Back to list | Back | Esc |
 
-Search: Ctrl/Cmd+F on desktop, or the search button.
+Search: Ctrl/Cmd+F on desktop, or the search button. TV guide: the guide button next to search,
+or Ctrl/Cmd+G.
+
+| In the TV guide | Remote | Keyboard |
+|---|---|---|
+| Move between programmes | Arrows (Left/Right at the edge moves the time) | Arrows |
+| Watch the channel / details of a later show | OK | Enter |
+| Show or hide the preview pane | preview button | P |
+| Refresh the guide | refresh button | R |
+| Jump back to now | Now button | N |
+
+The preview pane plays the selected channel in a small window. If your account allows only one
+connection at a time, the preview stops automatically when you open a channel full screen.
+
+## Playback settings
+
+Account menu → **Playback settings**:
+
+- **Video decoding:** hardware (default), hardware compatibility mode, or software. Try
+  compatibility mode if video is black or glitchy.
+- **Deinterlacing:** automatic by default, which smooths interlaced channels (common for live
+  sports and 1080i broadcasts).
+- **Smooth playback:** on by default. Uses lighter video scaling so weaker graphics chips keep up.
+
+If playback stutters, press **I** while watching. "Dropped frames" going up or "Decoder: Software"
+point to what's wrong.
 
 ## Building it yourself
 
@@ -68,7 +98,12 @@ Linux works too (`flutter build linux`) and needs `libmpv-dev` installed.
 lib/
   main.dart              app start, theme, TV remote key mapping
   models.dart            Profile, Category, MediaItem, Catalog
-  storage.dart           saved accounts and favorites
+  storage.dart           saved accounts, favorites and settings
+  playback.dart          mpv performance options and stats
+  epg/
+    epg.dart             programmes and channel matching
+    xmltv.dart           streaming XMLTV parser
+    epg_service.dart     download, 12-hour cache, refresh
   sources/
     xtream.dart          Xtream Codes API client
     m3u.dart             M3U parser
@@ -79,7 +114,9 @@ lib/
     home_screen.dart     sections, categories, list, search
     series_screen.dart   seasons and episodes
     player_screen.dart   full-screen player and remote controls
+    guide_view.dart      TV guide grid and preview pane
 test/                    parser tests
+windows/installer/       Inno Setup script for the Windows installer
 ```
 
 ## Before publishing to an app store
@@ -92,6 +129,6 @@ test/                    parser tests
 
 ## Not yet included
 
-TV guide (EPG), catch-up, choosing audio/subtitle tracks, parental PIN, and iOS testing.
+Catch-up / timeshift, choosing audio/subtitle tracks, parental PIN, and iOS testing.
 iOS should work with the same code (`flutter build ios`) but hasn't been tested.
 Apple TV would need a separate native app.

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models.dart';
+import 'playback.dart';
 
 /// Saved logins, favorites and last-watched channel, stored on this device only.
 class Storage {
@@ -50,4 +51,11 @@ class Storage {
 
   Future<void> setFavorites(Profile p, Set<String> keys) =>
       _prefs.setStringList('fav|${p.id}', keys.toList());
+
+  PlaybackSettings get playback => PlaybackSettings.load(_prefs);
+  Future<void> setPlayback(PlaybackSettings s) => s.save(_prefs);
+
+  /// Whether the guide shows its preview pane.
+  bool get guidePreview => _prefs.getBool('guidePreview') ?? true;
+  Future<void> setGuidePreview(bool v) => _prefs.setBool('guidePreview', v);
 }

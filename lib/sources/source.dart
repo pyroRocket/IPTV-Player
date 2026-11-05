@@ -12,6 +12,9 @@ abstract class IptvSource {
   List<Section> get sections;
   Future<Catalog> load(Section section);
 
+  /// The provider's own TV guide (XMLTV) addresses, if any.
+  List<String> get epgUrls => const [];
+
   /// Episodes for a series (Xtream only).
   Future<List<Season>> seasons(MediaItem series) async => const [];
 }

@@ -23,6 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _user = TextEditingController();
   final _pass = TextEditingController();
   final _url = TextEditingController();
+  final _epg = TextEditingController();
   late List<Profile> _saved = widget.storage.profiles;
 
   @override
@@ -33,7 +34,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    for (final c in [_server, _user, _pass, _url]) {
+    for (final c in [_server, _user, _pass, _url, _epg]) {
       c.dispose();
     }
     super.dispose();
@@ -74,7 +75,8 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
       if (!url.contains('://')) url = 'http://$url';
-      _connect(Profile.m3u(url: url));
+      final epg = _epg.text.trim();
+      _connect(Profile.m3u(url: url, epgUrl: epg.isEmpty ? null : epg));
     }
   }
 
@@ -127,14 +129,21 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         _field(_user, 'Username'),
                         _field(_pass, 'Password', obscure: true, last: true),
-                      ] else
+                      ] else ...[
                         _field(
                           _url,
                           'Playlist URL',
                           hint: 'http://provider.example/get.php?username=…&password=…&type=m3u_plus',
                           keyboard: TextInputType.url,
+                        ),
+                        _field(
+                          _epg,
+                          'TV guide (EPG) address, optional',
+                          hint: 'Leave blank to use the playlist\'s own guide',
+                          keyboard: TextInputType.url,
                           last: true,
                         ),
+                      ],
                       const SizedBox(height: 8),
                       FilledButton(
                         onPressed: _busy ? null : _submit,
