@@ -66,4 +66,9 @@ void main() {
     expect(m.first.programme, isNotNull);
     expect(m.last.viaBroadcaster, 'BBC One');
   });
+
+  test('fetches whole months, since ESPN rejects date ranges', () {
+    expect(monthsBetween(DateTime(2026, 11, 3), DateTime(2026, 11, 12)), ['202611']);
+    expect(monthsBetween(DateTime(2026, 12, 28), DateTime(2027, 1, 5)), ['202612', '202701']);
+  });
 }
