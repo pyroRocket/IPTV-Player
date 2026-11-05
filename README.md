@@ -10,6 +10,9 @@ No subscriptions, no ads, no bundled channels. Sign in with your provider's deta
 - **TV guide (EPG):** uses your provider's guide automatically (Xtream `xmltv.php` or the M3U's
   `x-tvg-url`), or any XMLTV address you set. Shows what's on now in the channel list and player,
   plus a full guide grid with a live preview pane and refresh
+- **Sports Zone:** pick competitions and follow teams to see live scores, results and upcoming
+  fixtures, with the channels in *your* playlist showing each match (found through your TV guide
+  and the broadcasters ESPN lists) and a one-click Watch button
 - Plays nearly any stream format (MPEG-TS, HLS, MKV, MP4; H.264/HEVC; AAC/AC3/E-AC3) using
   [mpv](https://mpv.io) through [media_kit](https://github.com/media-kit/media-kit)
 - Tries the next stream format automatically if one fails, and reconnects dropped live streams
@@ -65,6 +68,22 @@ or Ctrl/Cmd+G.
 The preview pane plays the selected channel in a small window. If your account allows only one
 connection at a time, the preview stops automatically when you open a channel full screen.
 
+## Sports Zone
+
+Open it with the trophy button at the top. On wide screens it opens as a side panel; on smaller
+screens and TVs it opens full screen.
+
+- **Pick sports:** soccer (Premier League, FA Cup, Champions League, LaLiga…), NFL, NBA, MLB, NHL,
+  Formula 1, UFC and more.
+- **Manage teams / Followed teams only:** follow teams to see just their games. A team you follow
+  is followed across all of that sport's competitions.
+- **On your channels:** the app searches your TV guide for each match around kick-off and checks
+  your channel names against the broadcasters listed for it. Tap a channel to watch.
+- Scores update every minute while a game is live.
+
+Scores and fixtures come from ESPN's public site feed. It's free and needs no account, but it's
+unofficial and could change without notice.
+
 ## Playback settings
 
 Account menu → **Playback settings**:
@@ -104,6 +123,10 @@ lib/
     epg.dart             programmes and channel matching
     xmltv.dart           streaming XMLTV parser
     epg_service.dart     download, 12-hour cache, refresh
+  sports/
+    espn.dart            ESPN scores/fixtures feed
+    leagues.dart         competitions offered in Pick sports
+    matching.dart        finds matches on your channels
   sources/
     xtream.dart          Xtream Codes API client
     m3u.dart             M3U parser
@@ -115,6 +138,7 @@ lib/
     series_screen.dart   seasons and episodes
     player_screen.dart   full-screen player and remote controls
     guide_view.dart      TV guide grid and preview pane
+    sports_zone.dart     Sports Zone panel
 test/                    parser tests
 windows/installer/       Inno Setup script for the Windows installer
 ```

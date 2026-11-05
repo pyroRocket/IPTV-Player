@@ -1,0 +1,53 @@
+{
+  "leagues": [{"id": "40", "name": "English FA Cup", "abbreviation": "FA Cup"}],
+  "events": [
+    {
+      "id": "704512",
+      "date": "2026-02-14T17:45Z",
+      "name": "Newcastle United at Aston Villa",
+      "shortName": "NEW @ AVL",
+      "status": {"clock": 4020.0, "displayClock": "67'", "period": 2,
+        "type": {"id": "2", "name": "STATUS_SECOND_HALF", "state": "in", "completed": false, "description": "Second Half", "detail": "67'", "shortDetail": "67'"}},
+      "competitions": [{
+        "id": "704512",
+        "date": "2026-02-14T17:45Z",
+        "venue": {"id": "382", "fullName": "Villa Park", "address": {"city": "Birmingham"}},
+        "competitors": [
+          {"id": "362", "homeAway": "home", "winner": false, "score": "2",
+           "team": {"id": "362", "displayName": "Aston Villa", "shortDisplayName": "Aston Villa", "abbreviation": "AVL", "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/362.png"}},
+          {"id": "361", "homeAway": "away", "winner": false, "score": "1",
+           "team": {"id": "361", "displayName": "Newcastle United", "shortDisplayName": "Newcastle", "abbreviation": "NEW", "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/361.png"}}
+        ],
+        "broadcasts": [{"market": "national", "names": ["ESPN+"]}],
+        "geoBroadcasts": [{"type": {"id": "1", "shortName": "TV"}, "market": {"id": "1", "type": "National"}, "media": {"shortName": "BBC One"}, "lang": "en", "region": "uk"}]
+      }]
+    },
+    {
+      "id": "704513",
+      "date": "2026-02-15T16:30Z",
+      "name": "Wigan Athletic at Arsenal",
+      "status": {"type": {"state": "pre", "completed": false, "description": "Scheduled", "shortDetail": "2/15 - 11:30 AM EST"}},
+      "competitions": [{
+        "date": "2026-02-15T16:30Z",
+        "venue": {"fullName": "Emirates Stadium"},
+        "competitors": [
+          {"homeAway": "away", "score": "0", "team": {"id": "350", "displayName": "Wigan Athletic", "shortDisplayName": "Wigan", "abbreviation": "WIG", "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/350.png"}},
+          {"homeAway": "home", "score": "0", "team": {"id": "359", "displayName": "Arsenal", "shortDisplayName": "Arsenal", "abbreviation": "ARS", "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png"}}
+        ],
+        "broadcasts": []
+      }]
+    },
+    {
+      "id": "704400",
+      "date": "2026-02-13T20:00Z",
+      "name": "Leeds United at Chelsea",
+      "status": {"type": {"state": "post", "completed": true, "description": "Full Time", "shortDetail": "FT"}},
+      "competitions": [{
+        "competitors": [
+          {"homeAway": "home", "winner": true, "score": {"value": 3.0, "displayValue": "3"}, "team": {"id": "363", "displayName": "Chelsea", "logo": "x"}},
+          {"homeAway": "away", "winner": false, "score": {"value": 0.0, "displayValue": "0"}, "team": {"id": "357", "displayName": "Leeds United", "logo": "y"}}
+        ]
+      }]
+    }
+  ]
+}

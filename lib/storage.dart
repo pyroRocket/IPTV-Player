@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models.dart';
 import 'playback.dart';
+import 'sports/espn.dart';
 
 /// Saved logins, favorites and last-watched channel, stored on this device only.
 class Storage {
@@ -58,4 +59,23 @@ class Storage {
   /// Whether the guide shows its preview pane.
   bool get guidePreview => _prefs.getBool('guidePreview') ?? true;
   Future<void> setGuidePreview(bool v) => _prefs.setBool('guidePreview', v);
+
+  // ---- Sports Zone ----
+  List<String> get sportsLeagues => _prefs.getStringList('sports.leagues') ?? const ['soccer/eng.1'];
+  Future<void> setSportsLeagues(List<String> paths) => _prefs.setStringList('sports.leagues', paths);
+
+  List<Team> get sportsTeams {
+    try {
+      final list = jsonDecode(_prefs.getString('sports.teams') ?? '[]') as List;
+      return list.map((e) => Team.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> setSportsTeams(List<Team> teams) =>
+      _prefs.setString('sports.teams', jsonEncode(teams.map((t) => t.toJson()).toList()));
+
+  bool get sportsTeamsOnly => _prefs.getBool('sports.teamsOnly') ?? false;
+  Future<void> setSportsTeamsOnly(bool v) => _prefs.setBool('sports.teamsOnly', v);
 }
