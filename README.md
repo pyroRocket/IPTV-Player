@@ -73,8 +73,9 @@ connection at a time, the preview stops automatically when you open a channel fu
 Open it with the trophy button at the top. On wide screens it opens as a side panel; on smaller
 screens and TVs it opens full screen.
 
-- **Pick sports:** soccer (Premier League, FA Cup, Champions League, LaLiga…), NFL, NBA, MLB, NHL,
-  Formula 1, UFC and more.
+- **Pick sports:** Soccer, American Football, Basketball, Baseball, Ice Hockey, Motorsport, Combat
+  Sports. Each sport includes all its competitions (e.g. Soccer covers Premier League, FA Cup,
+  Champions League, LaLiga…). Narrowing a sport to particular competitions is optional.
 - **Manage teams / Followed teams only:** follow teams to see just their games. A team you follow
   is followed across all of that sport's competitions.
 - **On your channels:** the app searches your TV guide for each match around kick-off and checks

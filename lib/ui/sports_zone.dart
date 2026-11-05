@@ -38,7 +38,8 @@ class SportsZone extends StatefulWidget {
 }
 
 class _SportsZoneState extends State<SportsZone> {
-  late List<String> _leaguePaths = widget.storage.sportsLeagues;
+  late List<String> _sports = widget.storage.sportsSelected;
+  late Map<String, List<String>> _leagueFilter = widget.storage.sportsLeagueFilter;
   late List<Team> _teams = widget.storage.sportsTeams;
   late bool _teamsOnly = widget.storage.sportsTeamsOnly;
   bool _results = false;
@@ -51,7 +52,12 @@ class _SportsZoneState extends State<SportsZone> {
   Timer? _timer;
   SportsMatcher? _matcher;
 
-  List<League> get _leagues => [for (final p in _leaguePaths) ?leagueByPath(p)];
+  /// Every competition of each chosen sport, unless that sport was narrowed.
+  List<League> get _leagues => [
+    for (final sport in _sports)
+      for (final l in leagues.where((l) => l.sport == sport))
+        if (_leagueFilter[sport] == null || _leagueFilter[sport]!.contains(l.path)) l,
+  ];
   Set<String> get _teamKeys => {for (final t in _teams) t.key};
 
   @override
@@ -115,46 +121,19 @@ class _SportsZoneState extends State<SportsZone> {
   // ---- settings ----------------------------------------------------------
 
   Future<void> _pickSports() async {
-    final chosen = Set<String>.of(_leaguePaths);
-    final ok = await showDialog<bool>(
+    final result = await showDialog<(List<String>, Map<String, List<String>>)>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, set) => AlertDialog(
-          title: const Text('Pick sports'),
-          content: SizedBox(
-            width: 420,
-            height: 480,
-            child: ListView(
-              children: [
-                for (final sport in sportGroups) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
-                    child: Text(sport, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  ),
-                  for (final l in leagues.where((l) => l.sport == sport))
-                    CheckboxListTile(
-                      dense: true,
-                      title: Text(l.name),
-                      value: chosen.contains(l.path),
-                      onChanged: (v) => set(() => v == true ? chosen.add(l.path) : chosen.remove(l.path)),
-                    ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
-          ],
-        ),
-      ),
+      builder: (_) => _SportPicker(sports: _sports, filter: _leagueFilter),
     );
-    if (ok != true) return;
-    _leaguePaths = [
-      for (final l in leagues)
-        if (chosen.contains(l.path)) l.path,
-    ];
-    await widget.storage.setSportsLeagues(_leaguePaths);
+    if (result == null) return;
+    final (sports, filter) = result;
+    setState(() {
+      _sports = sports;
+      _leagueFilter = filter;
+      _sportFilter.removeWhere((s) => !sports.contains(s));
+    });
+    await widget.storage.setSportsSelected(sports);
+    await widget.storage.setSportsLeagueFilter(filter);
     _load();
   }
 
@@ -270,9 +249,9 @@ class _SportsZoneState extends State<SportsZone> {
                       style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 12),
                     ),
                   ),
-                if (_leaguePaths.isEmpty)
+                if (_sports.isEmpty)
                   Message(
-                    text: 'Pick the sports and competitions you follow.',
+                    text: 'Pick the sports you follow.',
                     actions: [FilledButton(onPressed: _pickSports, child: const Text('Pick sports'))],
                   )
                 else if (events.isEmpty && !_loading)
@@ -679,6 +658,116 @@ class _TeamPickerState extends State<_TeamPicker> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(onPressed: () => Navigator.pop(context, _chosen), child: const Text('Save')),
+      ],
+    );
+  }
+}
+
+/// Choose sports; optionally narrow each one to particular competitions.
+class _SportPicker extends StatefulWidget {
+  const _SportPicker({required this.sports, required this.filter});
+  final List<String> sports;
+  final Map<String, List<String>> filter;
+
+  @override
+  State<_SportPicker> createState() => _SportPickerState();
+}
+
+class _SportPickerState extends State<_SportPicker> {
+  late final Set<String> _sports = {...widget.sports};
+  late final Map<String, Set<String>> _filter = {
+    for (final e in widget.filter.entries) e.key: {...e.value},
+  };
+  final Set<String> _expanded = {};
+
+  List<League> _of(String sport) => leagues.where((l) => l.sport == sport).toList();
+
+  bool _on(String sport, League l) => _filter[sport]?.contains(l.path) ?? true;
+
+  void _toggleLeague(String sport, League l, bool on) => setState(() {
+    final all = _of(sport).map((x) => x.path).toSet();
+    final set = _filter[sport] ?? {...all};
+    if (!on && set.length == 1 && set.contains(l.path)) return; // keep at least one
+    on ? set.add(l.path) : set.remove(l.path);
+    // All ticked means "every competition": no filter.
+    if (set.length == all.length) {
+      _filter.remove(sport);
+    } else {
+      _filter[sport] = set;
+    }
+  });
+
+  String _summary(String sport) {
+    final f = _filter[sport];
+    final n = _of(sport).length;
+    return f == null ? 'All competitions' : '${f.length} of $n competitions';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Pick sports'),
+      content: SizedBox(
+        width: 440,
+        height: 500,
+        child: ListView(
+          children: [
+            for (final sport in sportGroups) ...[
+              CheckboxListTile(
+                title: Text(sport, style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: _sports.contains(sport)
+                    ? Text(_summary(sport), style: const TextStyle(color: muted))
+                    : null,
+                value: _sports.contains(sport),
+                onChanged: (v) => setState(() {
+                  v == true ? _sports.add(sport) : _sports.remove(sport);
+                  if (v != true) _expanded.remove(sport);
+                }),
+              ),
+              if (_sports.contains(sport) && _of(sport).length > 1)
+                Padding(
+                  padding: const EdgeInsets.only(left: 16),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => setState(
+                        () => _expanded.contains(sport) ? _expanded.remove(sport) : _expanded.add(sport),
+                      ),
+                      icon: Icon(_expanded.contains(sport) ? Icons.expand_less : Icons.expand_more, size: 18),
+                      label: Text(_expanded.contains(sport) ? 'Done' : 'Choose competitions (optional)'),
+                    ),
+                  ),
+                ),
+              if (_expanded.contains(sport))
+                for (final l in _of(sport))
+                  Padding(
+                    padding: const EdgeInsets.only(left: 24),
+                    child: CheckboxListTile(
+                      dense: true,
+                      title: Text(l.name),
+                      value: _on(sport, l),
+                      onChanged: (v) => _toggleLeague(sport, l, v == true),
+                    ),
+                  ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, (
+            [
+              for (final s in sportGroups)
+                if (_sports.contains(s)) s,
+            ],
+            {
+              for (final e in _filter.entries)
+                if (_sports.contains(e.key)) e.key: e.value.toList(),
+            },
+          )),
+          child: const Text('Save'),
+        ),
       ],
     );
   }

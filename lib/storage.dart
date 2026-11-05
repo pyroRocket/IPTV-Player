@@ -61,8 +61,23 @@ class Storage {
   Future<void> setGuidePreview(bool v) => _prefs.setBool('guidePreview', v);
 
   // ---- Sports Zone ----
-  List<String> get sportsLeagues => _prefs.getStringList('sports.leagues') ?? const ['soccer/eng.1'];
-  Future<void> setSportsLeagues(List<String> paths) => _prefs.setStringList('sports.leagues', paths);
+  /// Chosen sports, e.g. ["Soccer", "Basketball"]. All their competitions
+  /// are included unless narrowed in [sportsLeagueFilter].
+  List<String> get sportsSelected => _prefs.getStringList('sports.sports') ?? const ['Soccer'];
+  Future<void> setSportsSelected(List<String> sports) => _prefs.setStringList('sports.sports', sports);
+
+  /// Optional per-sport list of competition paths. Missing sport = all competitions.
+  Map<String, List<String>> get sportsLeagueFilter {
+    try {
+      final m = jsonDecode(_prefs.getString('sports.leagueFilter') ?? '{}') as Map;
+      return {for (final e in m.entries) '${e.key}': List<String>.from(e.value as List)};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> setSportsLeagueFilter(Map<String, List<String>> f) =>
+      _prefs.setString('sports.leagueFilter', jsonEncode(f));
 
   List<Team> get sportsTeams {
     try {
