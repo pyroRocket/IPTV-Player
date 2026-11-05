@@ -20,7 +20,7 @@ const _step = Duration(minutes: 30);
 ///
 /// Remote: arrows move between programmes (Left/Right at the edge moves the
 /// time window), OK watches the channel (or shows details for a later
-/// programme). P toggles the preview pane, R refreshes, S or / searches.
+/// programme). P toggles the preview pane, R refreshes, N jumps to now.
 class GuideView extends StatefulWidget {
   const GuideView({
     super.key,
@@ -223,32 +223,6 @@ class _GuideViewState extends State<GuideView> {
     if (watch == true) _play(item);
   }
 
-  // ---- search ------------------------------------------------------------
-
-  Future<void> _search() async {
-    final epg = widget.epg;
-    if (epg == null) return;
-    final picked = await showDialog<(int, MediaItem, Programme)>(
-      context: context,
-      builder: (_) => _SearchDialog(channels: widget.channels, epg: epg),
-    );
-    if (picked == null || !mounted) return;
-    final (row, item, p) = picked;
-    if (p.isOnAt(DateTime.now())) {
-      _play(item);
-      return;
-    }
-    setState(() => _start = _floor(p.start));
-    _select(item, p);
-    if (_scroll.hasClients) {
-      _scroll.animateTo(
-        (row * _rowHeight).clamp(0, _scroll.position.maxScrollExtent),
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
-    }
-  }
-
   // ---- UI ----------------------------------------------------------------
 
   String _dayLabel(DateTime t) {
@@ -267,7 +241,6 @@ class _GuideViewState extends State<GuideView> {
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyP): widget.onTogglePreview,
         const SingleActivator(LogicalKeyboardKey.keyR): widget.onRefresh,
-        const SingleActivator(LogicalKeyboardKey.slash): _search,
         const SingleActivator(LogicalKeyboardKey.keyN): _goNow,
       },
       child: LayoutBuilder(
@@ -321,11 +294,6 @@ class _GuideViewState extends State<GuideView> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: widget.error != null ? const Color(0xFFFF6B6B) : muted),
               ),
-            ),
-            IconButton(
-              tooltip: 'Search the guide',
-              icon: const Icon(Icons.search),
-              onPressed: widget.epg == null ? null : _search,
             ),
             IconButton(
               tooltip: widget.showPreview ? 'Hide preview' : 'Show preview',
@@ -710,93 +678,6 @@ class _BlockState extends State<_Block> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _SearchDialog extends StatefulWidget {
-  const _SearchDialog({required this.channels, required this.epg});
-  final List<MediaItem> channels;
-  final Epg epg;
-
-  @override
-  State<_SearchDialog> createState() => _SearchDialogState();
-}
-
-class _SearchDialogState extends State<_SearchDialog> {
-  List<(int, MediaItem, Programme)> _results = const [];
-  String _q = '';
-
-  void _run(String q) {
-    final query = q.trim().toLowerCase();
-    final now = DateTime.now();
-    final out = <(int, MediaItem, Programme)>[];
-    if (query.length >= 2) {
-      for (var i = 0; i < widget.channels.length; i++) {
-        final c = widget.channels[i];
-        for (final p in widget.epg.programmesFor(c)) {
-          if (p.stop.isAfter(now) && p.title.toLowerCase().contains(query)) out.add((i, c, p));
-        }
-      }
-      out.sort((a, b) => a.$3.start.compareTo(b.$3.start));
-    }
-    setState(() {
-      _q = query;
-      _results = out.take(200).toList();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    return AlertDialog(
-      title: const Text('Search the guide'),
-      contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      content: SizedBox(
-        width: 520,
-        height: 420,
-        child: Column(
-          children: [
-            TextField(
-              autofocus: true,
-              decoration: const InputDecoration(hintText: 'Programme name', prefixIcon: Icon(Icons.search)),
-              onChanged: _run,
-              textInputAction: TextInputAction.search,
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: _results.isEmpty
-                  ? Center(
-                      child: Text(
-                        _q.length < 2 ? 'Type at least 2 letters' : 'Nothing on your channels matches',
-                        style: const TextStyle(color: muted),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: _results.length,
-                      itemBuilder: (_, i) {
-                        final (row, c, p) = _results[i];
-                        final onNow = p.isOnAt(now);
-                        return ListTile(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          title: Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: Text(
-                            '${c.name} · ${MaterialLocalizations.of(context).formatShortMonthDay(p.start)} '
-                            '${formatTime(context, p.start)}',
-                            style: const TextStyle(color: muted),
-                          ),
-                          trailing: onNow
-                              ? const Text('On now', style: TextStyle(color: Color(0xFFFF5D5D)))
-                              : null,
-                          onTap: () => Navigator.pop(context, (row, c, p)),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
     );
   }
 }

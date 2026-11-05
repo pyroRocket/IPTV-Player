@@ -9,7 +9,7 @@ No subscriptions, no ads, no bundled channels. Sign in with your provider's deta
 - Categories, search across a whole section, favorites, saved accounts with auto sign-in
 - **TV guide (EPG):** uses your provider's guide automatically (Xtream `xmltv.php` or the M3U's
   `x-tvg-url`), or any XMLTV address you set. Shows what's on now in the channel list and player,
-  plus a full guide grid with a live preview pane, programme search and refresh
+  plus a full guide grid with a live preview pane and refresh
 - Plays nearly any stream format (MPEG-TS, HLS, MKV, MP4; H.264/HEVC; AAC/AC3/E-AC3) using
   [mpv](https://mpv.io) through [media_kit](https://github.com/media-kit/media-kit)
 - Tries the next stream format automatically if one fails, and reconnects dropped live streams
@@ -59,7 +59,6 @@ or Ctrl/Cmd+G.
 | Move between programmes | Arrows (Left/Right at the edge moves the time) | Arrows |
 | Watch the channel / details of a later show | OK | Enter |
 | Show or hide the preview pane | preview button | P |
-| Search programmes | search button | / |
 | Refresh the guide | refresh button | R |
 | Jump back to now | Now button | N |
 
@@ -115,7 +114,7 @@ lib/
     home_screen.dart     sections, categories, list, search
     series_screen.dart   seasons and episodes
     player_screen.dart   full-screen player and remote controls
-    guide_view.dart      TV guide grid, preview pane, search
+    guide_view.dart      TV guide grid and preview pane
 test/                    parser tests
 windows/installer/       Inno Setup script for the Windows installer
 ```
