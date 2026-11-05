@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -17,7 +18,8 @@ import 'widgets.dart';
 ///
 /// Remote / keyboard:
 ///   Up/Down, Channel +/-   previous / next channel (live)
-///   Left/Right             seek -10s / +10s (movies, episodes)
+///   Left/Right             back / forward 10s (hold to scrub faster);
+///                          on live TV this rewinds within the buffer
 ///   OK / Enter / Space     play-pause (shows info on live)
 ///   Menu / S               add or remove favorite
 ///   I                      show playback stats
@@ -69,6 +71,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String _currentSource = '';
   late Future<void> _configured;
   bool _overlay = true;
+
+  // Seeking: taps and held keys add up into one target, applied after a pause.
+  Duration? _scrubTarget;
+  Timer? _scrubTimer;
+  DateTime? _holdStart, _lastRepeat;
+  double? _dragMs; // seek bar position while dragging
+
+  /// What can be seeked to right now (mpv's buffered range; for live TV the
+  /// end is the live edge).
+  (Duration, Duration)? _range;
+  Timer? _rangeTimer;
   bool _fullscreen = false;
   Timer? _hideTimer, _startTimer, _zapTimer;
 
@@ -135,6 +148,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _startTimer?.cancel();
     _zapTimer?.cancel();
     _statsTimer?.cancel();
+    _scrubTimer?.cancel();
+    _rangeTimer?.cancel();
     _player.dispose();
     _focus.dispose();
     _retryFocus.dispose();
@@ -174,6 +189,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _startedAt = DateTime.now();
       _status = null;
     });
+    _watchRange();
     // Frame info (interlaced or not) is known once a couple of frames decode.
     final gen = _gen;
     Future.delayed(const Duration(milliseconds: 800), () {
@@ -243,10 +259,84 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _zapTimer = Timer(const Duration(milliseconds: 400), _open);
   }
 
-  void _seek(int seconds) {
-    final pos = _player.state.position + Duration(seconds: seconds);
-    _player.seek(pos < Duration.zero ? Duration.zero : pos);
+  /// Back/forward by [seconds]. Repeated presses (or a held key) build up
+  /// a target that is applied once input pauses; holding speeds it up.
+  void _nudge(int seconds, {bool repeat = false}) {
+    if (!_started) return;
+    final now = DateTime.now();
+    if (repeat) {
+      // Remotes repeat at different rates; step at most ~4 times a second and
+      // speed up the longer the button is held: 10 s, then 30 s, then 60 s.
+      if (_lastRepeat != null && now.difference(_lastRepeat!) < const Duration(milliseconds: 250)) return;
+      _holdStart ??= now;
+    } else {
+      _holdStart = null;
+    }
+    _lastRepeat = now;
+    final held = _holdStart == null ? Duration.zero : now.difference(_holdStart!);
+    final mult = held > const Duration(seconds: 5) ? 6 : (held > const Duration(seconds: 2) ? 3 : 1);
+    var t = (_scrubTarget ?? _player.state.position) + Duration(seconds: seconds * mult);
+    final (lo, hi) = _seekBounds;
+    if (t < lo) t = lo;
+    if (t > hi) t = hi;
+    setState(() => _scrubTarget = t);
     _showOverlay();
+    _scrubTimer?.cancel();
+    _scrubTimer = Timer(Duration(milliseconds: repeat ? 500 : 400), () {
+      final target = _scrubTarget;
+      if (target != null) _player.seek(target);
+      if (mounted) setState(() => _scrubTarget = null);
+    });
+  }
+
+  (Duration, Duration) get _seekBounds {
+    final r = _range;
+    if (_live) {
+      final pos = _player.state.position;
+      return r ?? (pos, pos);
+    }
+    final dur = _player.state.duration;
+    return (Duration.zero, dur > Duration.zero ? dur : const Duration(days: 1));
+  }
+
+  Duration get _behindLive {
+    final r = _range;
+    if (!_live || r == null) return Duration.zero;
+    final b = r.$2 - _player.state.position;
+    return b.isNegative ? Duration.zero : b;
+  }
+
+  void _goLive() {
+    final r = _range;
+    if (r == null) return;
+    _player.seek(r.$2 - const Duration(milliseconds: 500));
+    _showOverlay();
+  }
+
+  /// Reads mpv's seekable cache range once a second.
+  void _watchRange() {
+    _rangeTimer?.cancel();
+    _range = null;
+    _rangeTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      final p = _player.platform;
+      if (p is! NativePlayer || !_started) return;
+      (Duration, Duration)? r;
+      try {
+        final state = jsonDecode(await p.getProperty('demuxer-cache-state'));
+        final ranges = state is Map ? state['seekable-ranges'] : null;
+        if (ranges is List && ranges.isNotEmpty) {
+          Duration d(num v) => Duration(milliseconds: (v * 1000).round());
+          final last = ranges.last as Map;
+          r = (d(ranges.first['start'] as num), d(last['end'] as num));
+        }
+      } catch (_) {}
+      if (!mounted) return;
+      if (_overlay) {
+        setState(() => _range = r);
+      } else {
+        _range = r;
+      }
+    });
   }
 
   Future<void> _toggleFullscreen() async {
@@ -295,12 +385,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // While an error is showing, let OK/arrows drive the Retry/Back buttons.
     if (_error != null) return KeyEventResult.ignored;
 
-    if (!_live && (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.mediaRewind)) {
-      _seek(-10);
+    if (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.mediaRewind) {
+      _nudge(-10, repeat: isRepeat);
       return KeyEventResult.handled;
     }
-    if (!_live && (k == LogicalKeyboardKey.arrowRight || k == LogicalKeyboardKey.mediaFastForward)) {
-      _seek(10);
+    if (k == LogicalKeyboardKey.arrowRight || k == LogicalKeyboardKey.mediaFastForward) {
+      _nudge(10, repeat: isRepeat);
       return KeyEventResult.handled;
     }
     if (isRepeat) return KeyEventResult.handled;
@@ -561,16 +651,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ),
               if (_live && widget.epg != null) _nowNext(),
               const Spacer(),
-              if (!_live) _seekBar(),
+              _live ? _liveBar() : _seekBar(),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  if (widget.items.length > 1)
-                    IconButton(
-                      iconSize: 32,
-                      icon: const Icon(Icons.skip_previous),
-                      onPressed: () => _step(-1),
-                    ),
+                  IconButton(
+                    iconSize: 32,
+                    tooltip: 'Back 10 seconds (←)',
+                    icon: const Icon(Icons.replay_10),
+                    onPressed: () => _nudge(-10),
+                  ),
                   StreamBuilder<bool>(
                     stream: _player.stream.playing,
                     initialData: _player.state.playing,
@@ -580,8 +670,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onPressed: _player.playOrPause,
                     ),
                   ),
-                  if (widget.items.length > 1)
-                    IconButton(iconSize: 32, icon: const Icon(Icons.skip_next), onPressed: () => _step(1)),
+                  IconButton(
+                    iconSize: 32,
+                    tooltip: 'Forward 10 seconds (→)',
+                    icon: const Icon(Icons.forward_10),
+                    onPressed: _live && _behindLive < const Duration(seconds: 2) ? null : () => _nudge(10),
+                  ),
                 ],
               ),
               if (_live && widget.items.length > 1)
@@ -593,24 +687,92 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  static const _mono = TextStyle(fontFeatures: [FontFeature.tabularFigures()]);
+
   Widget _seekBar() {
     return StreamBuilder<Duration>(
       stream: _player.stream.position,
       builder: (_, _) {
-        final pos = _player.state.position;
         final dur = _player.state.duration;
         final max = dur.inMilliseconds.toDouble();
+        final shown = _dragMs != null
+            ? Duration(milliseconds: _dragMs!.round())
+            : (_scrubTarget ?? _player.state.position);
         return Row(
           children: [
-            Text(_fmt(pos), style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
+            Text(_fmt(shown), style: _mono),
             Expanded(
               child: Slider(
-                value: max <= 0 ? 0 : pos.inMilliseconds.clamp(0, max).toDouble(),
+                value: max <= 0 ? 0 : shown.inMilliseconds.clamp(0, max).toDouble(),
                 max: max <= 0 ? 1 : max,
-                onChanged: max <= 0 ? null : (v) => _player.seek(Duration(milliseconds: v.round())),
+                // Show where you'll land while dragging; seek once on release.
+                onChanged: max <= 0
+                    ? null
+                    : (v) {
+                        setState(() => _dragMs = v);
+                        _showOverlay(sticky: true);
+                      },
+                onChangeEnd: max <= 0
+                    ? null
+                    : (v) {
+                        _player.seek(Duration(milliseconds: v.round()));
+                        setState(() => _dragMs = null);
+                        _showOverlay();
+                      },
               ),
             ),
-            Text(_fmt(dur), style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
+            Text(_fmt(dur), style: _mono),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Live TV: rewind within what's buffered, with a way back to live.
+  Widget _liveBar() {
+    return StreamBuilder<Duration>(
+      stream: _player.stream.position,
+      builder: (_, _) {
+        final r = _range;
+        final pos = _player.state.position;
+        final atLive = _behindLive < const Duration(seconds: 4) && _scrubTarget == null;
+        final span = r == null ? Duration.zero : r.$2 - r.$1;
+        final shown = _dragMs != null ? Duration(milliseconds: _dragMs!.round()) : (_scrubTarget ?? pos);
+        final behind = r == null ? Duration.zero : r.$2 - shown;
+        return Row(
+          children: [
+            ActionChip(
+              avatar: Icon(Icons.circle, size: 10, color: atLive ? const Color(0xFFFF5D5D) : Colors.white38),
+              label: Text(atLive ? 'LIVE' : 'Go live'),
+              onPressed: _goLive,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: r == null || span < const Duration(seconds: 5)
+                  ? const SizedBox()
+                  : Slider(
+                      min: r.$1.inMilliseconds.toDouble(),
+                      max: r.$2.inMilliseconds.toDouble(),
+                      value: shown.inMilliseconds.clamp(r.$1.inMilliseconds, r.$2.inMilliseconds).toDouble(),
+                      onChanged: (v) {
+                        setState(() => _dragMs = v);
+                        _showOverlay(sticky: true);
+                      },
+                      onChangeEnd: (v) {
+                        _player.seek(Duration(milliseconds: v.round()));
+                        setState(() => _dragMs = null);
+                        _showOverlay();
+                      },
+                    ),
+            ),
+            SizedBox(
+              width: 64,
+              child: Text(
+                atLive || behind.inSeconds < 1 ? '' : '−${_fmt(behind)}',
+                textAlign: TextAlign.right,
+                style: _mono,
+              ),
+            ),
           ],
         );
       },

@@ -47,12 +47,17 @@ Requires a Fire TV running Fire OS (Android-based). The newest Vega OS models ca
 | In the player | Remote | Keyboard |
 |---|---|---|
 | Previous / next channel (live) | Up / Down, Channel +/- | Up / Down, Page Up/Down |
-| Seek -10 s / +10 s (movies, episodes) | Left / Right, Rewind / Fast-forward | Left / Right |
+| Back / forward 10 s (hold to scrub faster) | Left / Right, Rewind / Fast-forward | Left / Right |
 | Play / pause (shows info on live TV) | OK, Play/Pause | Enter, Space |
 | Add / remove favorite | Menu | S |
 | Playback stats | Info | I |
 | Fullscreen | | F, or double-click |
 | Back to list | Back | Esc |
+
+On screen there are ⏪10 / 10⏩ buttons and a seek bar (it shows where you'll land while dragging).
+On **live TV** you can rewind within what's been buffered since you tuned in (a few minutes on
+desktop, less on Fire TV) and pause; the bar shows how far behind live you are, and **Go live**
+jumps back.
 
 Search: Ctrl/Cmd+F on desktop, or the search button. TV guide: the guide button next to search,
 or Ctrl/Cmd+G.
