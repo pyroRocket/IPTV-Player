@@ -45,9 +45,15 @@ class ItemTile extends StatelessWidget {
     required this.onFavorite,
     this.autofocus = false,
     this.playing = false,
+    this.subtitle,
+    this.progress,
   });
 
   final MediaItem item;
+
+  /// e.g. the programme on now, with how far through it is (0..1).
+  final String? subtitle;
+  final double? progress;
   final bool favorite;
   final bool playing;
   final bool autofocus;
@@ -80,7 +86,32 @@ class ItemTile extends StatelessWidget {
                           child: Text('${item.number}', style: const TextStyle(color: muted)),
                         ),
                       ],
-                      Expanded(child: Text(item.name, maxLines: 2, overflow: TextOverflow.ellipsis)),
+                      Expanded(
+                        child: subtitle == null
+                            ? Text(item.name, maxLines: 2, overflow: TextOverflow.ellipsis)
+                            : Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  Text(
+                                    subtitle!,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(color: muted, fontSize: 12),
+                                  ),
+                                  if (progress != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 3, right: 24),
+                                      child: LinearProgressIndicator(
+                                        value: progress,
+                                        minHeight: 2,
+                                        backgroundColor: line,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                      ),
                       if (item.kind == ItemKind.series) const Icon(Icons.chevron_right, color: muted),
                     ],
                   ),
@@ -178,3 +209,9 @@ class Message extends StatelessWidget {
     ),
   );
 }
+
+/// Local time like "18:30" or "6:30 PM", following the device setting.
+String formatTime(BuildContext context, DateTime t) => MaterialLocalizations.of(context).formatTimeOfDay(
+  TimeOfDay.fromDateTime(t),
+  alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+);

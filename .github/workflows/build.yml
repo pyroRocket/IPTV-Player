@@ -57,13 +57,35 @@ jobs:
           channel: stable
           cache: true
       - run: flutter build windows --release
+      # Ship the Visual C++ runtime next to the app so it starts on PCs without it.
+      - name: Bundle VC++ runtime
+        shell: pwsh
+        run: |
+          foreach ($dll in 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            Copy-Item "$env:WINDIR\System32\$dll" build/windows/x64/runner/Release/
+          }
       - name: Zip
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath IPTV-Player-windows.zip
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+            $env:Path += ';C:\Program Files (x86)\Inno Setup 6'
+          }
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+            choco install innosetup -y --no-progress
+            $env:Path += ';C:\Program Files (x86)\Inno Setup 6'
+          }
+          iscc /DAppVersion=$version windows/installer/installer.iss
+          Move-Item dist/IPTV-Player-windows-setup.exe .
       - uses: actions/upload-artifact@v4
         with:
           name: IPTV-Player-windows
-          path: IPTV-Player-windows.zip
+          path: |
+            IPTV-Player-windows-setup.exe
+            IPTV-Player-windows.zip
 
   macos:
     needs: test
@@ -97,5 +119,6 @@ jobs:
         with:
           files: |
             IPTV-Player-android.apk
+            IPTV-Player-windows-setup.exe
             IPTV-Player-windows.zip
             IPTV-Player-macos.zip

@@ -48,3 +48,31 @@ Future<String> fetchText(String url, {Duration timeout = const Duration(seconds:
   // Decode as UTF-8 regardless of headers; IPTV servers often mislabel it.
   return utf8.decode(res.bodyBytes, allowMalformed: true);
 }
+
+/// Streams a (possibly huge) file such as an XMLTV guide straight to disk.
+Future<void> downloadToFile(String url, File dest, {Duration timeout = const Duration(minutes: 5)}) async {
+  final req = http.Request('GET', Uri.parse(url))..headers['User-Agent'] = userAgent;
+  final http.StreamedResponse res;
+  try {
+    res = await _client.send(req).timeout(const Duration(seconds: 60));
+  } on TimeoutException {
+    throw SourceException('The guide server took too long to respond.');
+  } on SocketException catch (e) {
+    throw SourceException('Couldn\'t reach the guide server (${e.osError?.message ?? e.message}).');
+  } on http.ClientException catch (e) {
+    throw SourceException('Couldn\'t reach the guide server (${e.message}).');
+  }
+  if (res.statusCode != 200) {
+    throw SourceException('The guide server returned an error (HTTP ${res.statusCode}).');
+  }
+  final tmp = File('${dest.path}.part');
+  await tmp.parent.create(recursive: true);
+  final sink = tmp.openWrite();
+  try {
+    await res.stream.pipe(sink).timeout(timeout);
+  } on TimeoutException {
+    await sink.close();
+    throw SourceException('Downloading the guide took too long.');
+  }
+  await tmp.rename(dest.path);
+}

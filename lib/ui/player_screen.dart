@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../epg/epg.dart';
 import '../models.dart';
+import '../playback.dart';
 import '../sources/net.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -18,6 +20,7 @@ import 'widgets.dart';
 ///   Left/Right             seek -10s / +10s (movies, episodes)
 ///   OK / Enter / Space     play-pause (shows info on live)
 ///   Menu / S               add or remove favorite
+///   I                      show playback stats
 ///   F / double-click       fullscreen (desktop)
 ///   Back / Esc             return to list
 class PlayerScreen extends StatefulWidget {
@@ -27,26 +30,29 @@ class PlayerScreen extends StatefulWidget {
     required this.index,
     required this.isFavorite,
     required this.onToggleFavorite,
+    this.playback = const PlaybackSettings(),
+    this.epg,
   });
 
   final List<MediaItem> items;
   final int index;
   final bool Function(MediaItem) isFavorite;
   final void Function(MediaItem) onToggleFavorite;
+  final PlaybackSettings playback;
+
+  /// Guide data for "Now / Next" on live channels.
+  final Epg? epg;
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  late final Player _player = Player(
-    configuration: const PlayerConfiguration(
-      title: 'IPTV Player',
-      bufferSize: 64 * 1024 * 1024,
-      logLevel: MPVLogLevel.warn, // so HTTP errors (403/404) reach us
-    ),
-  );
-  late final VideoController _video = VideoController(_player);
+  late final (Player, VideoController, Future<void>) _created = createPlayer(widget.playback);
+  late final Player _player = _created.$1;
+  late final VideoController _video = _created.$2;
+  List<(String, String)>? _stats;
+  Timer? _statsTimer;
   final _focus = FocusNode();
   final _retryFocus = FocusNode();
   final List<StreamSubscription> _subs = [];
@@ -101,18 +107,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }),
     ]);
     if (!_desktop) defaultEnterNativeFullscreen();
-    _configured = _configure();
+    _configured = _created.$3;
     _open();
   }
 
-  Future<void> _configure() async {
-    final p = _player.platform;
-    if (p is NativePlayer) {
-      await p.setProperty('user-agent', userAgent);
-      await p.setProperty('network-timeout', '20');
-      // Let ffmpeg ride out short network hiccups on live streams.
-      await p.setProperty('stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
+  void _toggleStats() {
+    _statsTimer?.cancel();
+    if (_stats != null) {
+      setState(() => _stats = null);
+      return;
     }
+    Future<void> refresh() async {
+      final s = await playbackStats(_player);
+      if (mounted) setState(() => _stats = s);
+    }
+
+    refresh();
+    _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) => refresh());
   }
 
   @override
@@ -123,6 +134,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _hideTimer?.cancel();
     _startTimer?.cancel();
     _zapTimer?.cancel();
+    _statsTimer?.cancel();
     _player.dispose();
     _focus.dispose();
     _retryFocus.dispose();
@@ -161,6 +173,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _started = true;
       _startedAt = DateTime.now();
       _status = null;
+    });
+    // Frame info (interlaced or not) is known once a couple of frames decode.
+    final gen = _gen;
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted && gen == _gen) autoDeinterlace(_player, widget.playback);
     });
   }
 
@@ -305,6 +322,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _showOverlay();
       return KeyEventResult.handled;
     }
+    if (k == LogicalKeyboardKey.keyI || k == LogicalKeyboardKey.info) {
+      _toggleStats();
+      return KeyEventResult.handled;
+    }
     if (k == LogicalKeyboardKey.keyF && _desktop) {
       _toggleFullscreen();
       return KeyEventResult.handled;
@@ -354,6 +375,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                   ),
                 if (_error != null) _errorBox(),
+                if (_stats != null) _statsBox(),
                 AnimatedOpacity(
                   opacity: _overlay ? 1 : 0,
                   duration: const Duration(milliseconds: 200),
@@ -405,6 +427,86 @@ class _PlayerScreenState extends State<PlayerScreen> {
     ),
   );
 
+  Widget _statsBox() => Positioned(
+    top: 80,
+    right: 16,
+    child: IgnorePointer(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.75),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: DefaultTextStyle(
+          style: const TextStyle(
+            fontSize: 12,
+            color: Colors.white,
+            fontFeatures: [FontFeature.tabularFigures()],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final (k, v) in _stats!)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 1),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 110,
+                        child: Text(k, style: const TextStyle(color: Colors.white60)),
+                      ),
+                      Text(v),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Widget _nowNext() {
+    final now = widget.epg!.nowFor(_item);
+    final next = widget.epg!.nextFor(_item);
+    if (now == null && next == null) return const SizedBox();
+    String t(DateTime d) => MaterialLocalizations.of(context).formatTimeOfDay(
+      TimeOfDay.fromDateTime(d),
+      alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(left: 112, top: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (now != null) ...[
+            Text(
+              '${t(now.start)} – ${t(now.stop)}  ${now.title}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              width: 320,
+              child: LinearProgressIndicator(value: now.progressAt(DateTime.now()), minHeight: 3),
+            ),
+          ],
+          if (next != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Next  ${t(next.start)}  ${next.title}',
+                style: const TextStyle(color: Colors.white70),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _controls() {
     final fav = widget.isFavorite(_item);
     return DecoratedBox(
@@ -444,6 +546,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       icon: Icon(fav ? Icons.star : Icons.star_border, color: fav ? star : null),
                       onPressed: () => setState(() => widget.onToggleFavorite(_item)),
                     ),
+                  IconButton(
+                    tooltip: 'Playback stats (I)',
+                    icon: const Icon(Icons.info_outline),
+                    onPressed: _toggleStats,
+                  ),
                   if (_desktop)
                     IconButton(
                       tooltip: 'Fullscreen (F)',
@@ -452,6 +559,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                 ],
               ),
+              if (_live && widget.epg != null) _nowNext(),
               const Spacer(),
               if (!_live) _seekBar(),
               Row(

@@ -20,11 +20,12 @@ class Profile {
     required String this.username,
     required String this.password,
     String? name,
+    this.epgUrl,
   }) : type = 'xtream',
        url = null,
        name = name ?? _host(server);
 
-  Profile.m3u({required String this.url, String? name})
+  Profile.m3u({required String this.url, String? name, this.epgUrl})
     : type = 'm3u',
       server = null,
       username = null,
@@ -38,6 +39,9 @@ class Profile {
   final String? password;
   final String? url;
 
+  /// Custom guide (XMLTV) address. When empty, the provider's own guide is used.
+  final String? epgUrl;
+
   bool get isXtream => type == 'xtream';
 
   /// Stable identity used for saving favorites per account.
@@ -50,11 +54,25 @@ class Profile {
     if (username != null) 'username': username,
     if (password != null) 'password': password,
     if (url != null) 'url': url,
+    if (epgUrl != null && epgUrl!.isNotEmpty) 'epgUrl': epgUrl,
   };
 
+  Profile withEpgUrl(String? epg) {
+    final e = (epg == null || epg.trim().isEmpty) ? null : epg.trim();
+    return isXtream
+        ? Profile.xtream(server: server!, username: username!, password: password!, name: name, epgUrl: e)
+        : Profile.m3u(url: url!, name: name, epgUrl: e);
+  }
+
   static Profile fromJson(Map<String, dynamic> j) => j['type'] == 'xtream'
-      ? Profile.xtream(server: j['server'], username: j['username'], password: j['password'], name: j['name'])
-      : Profile.m3u(url: j['url'], name: j['name']);
+      ? Profile.xtream(
+          server: j['server'],
+          username: j['username'],
+          password: j['password'],
+          name: j['name'],
+          epgUrl: j['epgUrl'],
+        )
+      : Profile.m3u(url: j['url'], name: j['name'], epgUrl: j['epgUrl']);
 
   static String _host(String u) {
     try {
@@ -82,6 +100,8 @@ class MediaItem {
     this.categoryId = '',
     this.sources = const [],
     this.number,
+    this.epgId,
+    this.epgName,
   }) : searchName = name.toLowerCase();
 
   final ItemKind kind;
@@ -94,6 +114,12 @@ class MediaItem {
   final List<String> sources;
   final int? number;
   final String searchName;
+
+  /// Guide channel id (XMLTV `tvg-id` / Xtream `epg_channel_id`), if known.
+  final String? epgId;
+
+  /// Alternative name for guide matching (`tvg-name`).
+  final String? epgName;
 
   String get key => '${kind.name}:$id';
   bool get playable => kind != ItemKind.series;

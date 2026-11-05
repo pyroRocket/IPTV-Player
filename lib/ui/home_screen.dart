@@ -1,11 +1,16 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../epg/epg.dart';
+import '../epg/epg_service.dart';
 import '../models.dart';
+import '../playback.dart';
 import '../sources/source.dart';
 import '../storage.dart';
+import 'guide_view.dart';
 import 'login_screen.dart';
 import 'player_screen.dart';
 import 'series_screen.dart';
@@ -39,6 +44,15 @@ class _HomeScreenState extends State<HomeScreen> {
   final _search = TextEditingController();
   final _listScroll = ScrollController();
 
+  late Profile _profile = widget.profile;
+  late PlaybackSettings _playback = widget.storage.playback;
+  Epg? _epg;
+  bool _epgLoading = false;
+  String? _epgError;
+  bool _guide = false;
+  late bool _showPreview = widget.storage.guidePreview;
+  Timer? _tick;
+
   // Cache of the filtered list so rebuilds stay cheap on big catalogs.
   List<MediaItem>? _visible;
   Object? _visibleKey;
@@ -51,10 +65,15 @@ class _HomeScreenState extends State<HomeScreen> {
     } else {
       _connect();
     }
+    // Keep "on now" lines current.
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted && _epg != null) setState(() {});
+    });
   }
 
   @override
   void dispose() {
+    _tick?.cancel();
     _search.dispose();
     _listScroll.dispose();
     super.dispose();
@@ -83,9 +102,150 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final c = await _source!.load(s);
       if (mounted) setState(() => _catalogs[s] = c);
+      if (s == Section.live && _epg == null) _loadEpg();
     } catch (e) {
       if (mounted) setState(() => _errors[s] = '$e');
     }
+  }
+
+  List<String> get _epgUrls => _profile.epgUrl != null ? [_profile.epgUrl!] : _source!.epgUrls;
+
+  Future<void> _loadEpg({bool refresh = false}) async {
+    final channels = _catalogs[Section.live]?.items;
+    if (_source == null || channels == null || _epgLoading) return;
+    if (_epgUrls.isEmpty) {
+      setState(() => _epgError = 'No guide for this playlist. Add a guide address in Account → TV guide.');
+      return;
+    }
+    setState(() {
+      _epgLoading = true;
+      _epgError = null;
+    });
+    try {
+      final epg = await EpgService.load(urls: _epgUrls, channels: channels, refresh: refresh);
+      if (mounted) setState(() => _epg = epg);
+    } catch (e) {
+      if (mounted) setState(() => _epgError = 'Guide: $e');
+    } finally {
+      if (mounted) setState(() => _epgLoading = false);
+    }
+  }
+
+  Future<void> _guideSettings() async {
+    final c = TextEditingController(text: _profile.epgUrl ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('TV guide'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _source!.epgUrls.isEmpty
+                    ? 'This playlist doesn\'t include a guide. Paste an XMLTV guide address below.'
+                    : 'Your provider\'s guide is used automatically. To use a different one, paste an '
+                          'XMLTV address (.xml or .xml.gz) below.',
+                style: const TextStyle(color: muted),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: c,
+                autofocus: true,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  labelText: 'Guide (XMLTV) address',
+                  hintText: 'Leave blank for default',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text('Save and reload')),
+        ],
+      ),
+    );
+    c.dispose();
+    if (result == null) return;
+    _profile = _profile.withEpgUrl(result);
+    await widget.storage.saveProfile(_profile);
+    setState(() => _epg = null);
+    _loadEpg(refresh: true);
+  }
+
+  Future<void> _playbackSettings() async {
+    var s = _playback;
+    final saved = await showDialog<PlaybackSettings>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => AlertDialog(
+          title: const Text('Playback'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Video decoding', style: TextStyle(fontWeight: FontWeight.w600)),
+                  RadioGroup<Decoder>(
+                    groupValue: s.decoder,
+                    onChanged: (v) => set(() => s = s.copyWith(decoder: v)),
+                    child: Column(
+                      children: [
+                        for (final d in Decoder.values)
+                          RadioListTile<Decoder>(value: d, title: Text(d.label), dense: true),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('Deinterlacing', style: TextStyle(fontWeight: FontWeight.w600)),
+                  RadioGroup<Deinterlace>(
+                    groupValue: s.deinterlace,
+                    onChanged: (v) => set(() => s = s.copyWith(deinterlace: v)),
+                    child: Column(
+                      children: [
+                        for (final d in Deinterlace.values)
+                          RadioListTile<Deinterlace>(value: d, title: Text(d.label), dense: true),
+                      ],
+                    ),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Smooth playback'),
+                    subtitle: const Text(
+                      'Uses lighter video scaling. Turn off for slightly sharper picture on a fast computer.',
+                    ),
+                    value: s.smoothScaling,
+                    onChanged: (v) => set(() => s = s.copyWith(smoothScaling: v)),
+                  ),
+                  const Text(
+                    'Tip: press I (or the ⓘ button) while watching to see playback stats.',
+                    style: TextStyle(color: muted, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, s), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+    if (saved == null) return;
+    setState(() => _playback = saved);
+    await widget.storage.setPlayback(saved);
+  }
+
+  void _togglePreview() {
+    setState(() => _showPreview = !_showPreview);
+    widget.storage.setGuidePreview(_showPreview);
   }
 
   void _setSection(Section s) {
@@ -150,6 +310,8 @@ class _HomeScreenState extends State<HomeScreen> {
           index: playable.indexOf(item),
           isFavorite: (i) => _favs.contains(i.key),
           onToggleFavorite: _toggleFav,
+          playback: _playback,
+          epg: _epg,
         ),
       ),
     );
@@ -212,6 +374,8 @@ class _HomeScreenState extends State<HomeScreen> {
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyF, control: true): _openSearchDialog,
         const SingleActivator(LogicalKeyboardKey.keyF, meta: true): _openSearchDialog,
+        const SingleActivator(LogicalKeyboardKey.keyG, control: true): _toggleGuide,
+        const SingleActivator(LogicalKeyboardKey.keyG, meta: true): _toggleGuide,
       },
       child: Scaffold(
         body: SafeArea(
@@ -285,11 +449,26 @@ class _HomeScreenState extends State<HomeScreen> {
               )
             else
               IconButton(tooltip: 'Search', onPressed: _openSearchDialog, icon: const Icon(Icons.search)),
+            if (_section == Section.live)
+              IconButton(
+                tooltip: _guide ? 'Channel list' : 'TV guide',
+                isSelected: _guide,
+                onPressed: _toggleGuide,
+                icon: const Icon(Icons.calendar_view_day_outlined),
+                selectedIcon: const Icon(Icons.calendar_view_day, color: accent),
+              ),
             PopupMenuButton<String>(
               tooltip: 'Account',
               icon: const Icon(Icons.account_circle_outlined),
               onSelected: (v) {
-                if (v == 'out') _signOut();
+                switch (v) {
+                  case 'out':
+                    _signOut();
+                  case 'guide':
+                    _guideSettings();
+                  case 'playback':
+                    _playbackSettings();
+                }
               },
               itemBuilder: (_) => [
                 PopupMenuItem(
@@ -302,6 +481,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     ].join('\n'),
                   ),
                 ),
+                const PopupMenuItem(value: 'playback', child: Text('Playback settings')),
+                const PopupMenuItem(value: 'guide', child: Text('TV guide settings')),
                 const PopupMenuItem(value: 'out', child: Text('Switch account')),
               ],
             ),
@@ -309,6 +490,12 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  void _toggleGuide() {
+    if (_section != Section.live) _setSection(Section.live);
+    setState(() => _guide = !_guide);
+    if (_epg == null && !_epgLoading) _loadEpg();
   }
 
   static String _two(int n) => n.toString().padLeft(2, '0');
@@ -398,6 +585,20 @@ class _HomeScreenState extends State<HomeScreen> {
       return const Message(text: 'Loading…');
     }
     final items = _items;
+    if (_section == Section.live && _guide) {
+      return GuideView(
+        channels: items,
+        epg: _epg,
+        loading: _epgLoading,
+        error: _epgError,
+        onRefresh: () => _loadEpg(refresh: true),
+        onPlay: (it, list) => _open(it, list),
+        showPreview: _showPreview,
+        onTogglePreview: _togglePreview,
+        playback: _playback,
+      );
+    }
+    final now = DateTime.now();
     return Column(
       children: [
         if (_query.isNotEmpty)
@@ -432,8 +633,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   itemExtent: 60,
                   itemBuilder: (_, i) {
                     final it = items[i];
+                    final on = it.kind == ItemKind.live ? _epg?.nowFor(it, now) : null;
                     return ItemTile(
                       item: it,
+                      subtitle: on?.title,
+                      progress: on?.progressAt(now),
                       favorite: _favs.contains(it.key),
                       onTap: () => _open(it, items),
                       onFavorite: () => _toggleFav(it),
